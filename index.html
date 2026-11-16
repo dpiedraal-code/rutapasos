@@ -189,9 +189,9 @@
     border:1px solid var(--border);border-radius:10px;padding:10px;font-size:14px;cursor:pointer;
   }
   .leaflet-container{font-family:inherit;}
-  .leaflet-tile-pane{filter:saturate(1.3) contrast(1.06) brightness(1.03);}
+  .leaflet-tile-pane{filter:saturate(1.08) contrast(1.02);}
   @media (prefers-color-scheme: dark){
-    .leaflet-tile-pane{filter:invert(100%) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(1.15);}
+    .leaflet-tile-pane{filter:invert(100%) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(1.1);}
   }
 </style>
 </head>
@@ -310,11 +310,26 @@
   var VIEWBOX = { minLon:-4.60, minLat:39.90, maxLon:-3.00, maxLat:41.20 }; // Comunidad de Madrid, sesga sin excluir
 
   var map = L.map('map', { zoomControl:true }).setView(COLMENAR, 13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+
+  var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
-    subdomains: 'abc',
     attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
+  });
+  var esriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri'
+  });
+
+  esriLayer.addTo(map);
+  var tileErrors = 0, fellBack = false;
+  esriLayer.on('tileerror', function(){
+    tileErrors++;
+    if (tileErrors >= 6 && !fellBack){
+      fellBack = true;
+      map.removeLayer(esriLayer);
+      osmLayer.addTo(map);
+    }
+  });
 
   var markersLayer = L.layerGroup().addTo(map);
   var routeLayer = L.layerGroup().addTo(map);
