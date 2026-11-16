@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Ruta de Pasos</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23163322'/%3E%3Cpath d='M30 70 Q30 45 50 45 Q70 45 70 25' stroke='%23e8a94a' stroke-width='9' fill='none' stroke-linecap='round' stroke-dasharray='1 16' /%3E%3Ccircle cx='30' cy='70' r='8' fill='%235fae6e'/%3E%3Ccircle cx='70' cy='25' r='8' fill='%23e8a94a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,29 +64,49 @@
     align-items:center;
     gap:10px;
   }
-  header .brand .dot{
-    width:10px;height:10px;border-radius:50%;
-    background:var(--accent);
+  header .brand .logo{
+    width:34px;height:34px;border-radius:10px;
+    background:var(--surface-2);border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
   }
+  header .brand .logo svg{width:20px;height:20px;}
   header h1{font-size:17px;letter-spacing:.2px;}
   header .ver{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
   .gear{
     background:none;border:1px solid var(--border);color:var(--fg);
-    width:36px;height:36px;border-radius:10px;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;font-size:16px;
+    width:38px;height:38px;border-radius:10px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;font-size:17px;
+    transition:background .15s ease, transform .1s ease;
   }
+  .gear:active{transform:scale(.93);background:var(--surface-2);}
   main{
-    flex:1;display:flex;flex-direction:column;
+    flex:1;display:flex;flex-direction:column;position:relative;
+  }
+  .map-wrap{
+    position:relative;
+    width:100%;
+    height:min(50vh, 400px);
+    background:var(--surface-2);
+    overflow:hidden;
   }
   #map{
-    width:100%;
-    height:min(52vh, 420px);
-    background:var(--surface-2);
+    width:100%;height:100%;
+  }
+  .map-wrap::after{
+    content:"";
+    position:absolute;left:0;right:0;bottom:0;height:36px;
+    background:linear-gradient(to bottom, transparent, var(--surface));
+    pointer-events:none;
   }
   .panel{
-    padding:16px max(16px, env(safe-area-inset-left,0px)) 24px;
+    position:relative;
+    margin-top:-18px;
+    border-top-left-radius:20px;
+    border-top-right-radius:20px;
+    padding:22px max(16px, env(safe-area-inset-left,0px)) 28px;
     display:flex;flex-direction:column;gap:14px;
     background:var(--surface);
+    box-shadow:0 -8px 24px rgba(0,0,0,.12);
   }
   .row{display:flex;gap:10px;flex-wrap:wrap;}
   .field{flex:1;min-width:140px;display:flex;flex-direction:column;gap:6px;}
@@ -120,8 +141,15 @@
     font-family:'Space Grotesk',sans-serif;
     cursor:pointer;
     letter-spacing:.02em;
+    transition:transform .12s ease, filter .15s ease, box-shadow .15s ease;
+    box-shadow:0 4px 14px rgba(95,174,110,.28);
   }
-  .main-btn:disabled{opacity:.6;}
+  .main-btn:active{transform:scale(.98);filter:brightness(.95);}
+  .main-btn:disabled{opacity:.6;box-shadow:none;}
+  input[type=text]:not(:placeholder-shown), input[type=number]{transition:border-color .15s ease;}
+  input[type=text], input[type=number], select{transition:border-color .15s ease, box-shadow .15s ease;}
+  .loc-btn{transition:background .15s ease, transform .1s ease;}
+  .loc-btn:active{transform:scale(.97);}
   .status{
     font-size:13px;color:var(--muted);min-height:18px;
   }
@@ -131,13 +159,15 @@
   }
   .stat{
     background:var(--surface-2);border:1px solid var(--border);border-radius:12px;
-    padding:12px;text-align:center;
+    padding:14px 10px;text-align:center;
+    display:flex;flex-direction:column;align-items:center;gap:4px;
   }
+  .stat svg{width:18px;height:18px;color:var(--accent-2);margin-bottom:2px;}
   .stat .v{
-    font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;
+    font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;
     font-variant-numeric:tabular-nums;
   }
-  .stat .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+  .stat .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
   .stat.hit .v{color:var(--accent-2);}
   .diff{font-size:12px;color:var(--muted);text-align:center;}
   .sheet{
@@ -164,7 +194,13 @@
 <div class="app">
   <header>
     <div class="brand">
-      <div class="dot"></div>
+      <div class="logo">
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M30 70 Q30 45 50 45 Q70 45 70 25" stroke="var(--accent)" stroke-width="10" stroke-linecap="round" stroke-dasharray="1 17"/>
+          <circle cx="30" cy="70" r="9" fill="var(--accent-2)"/>
+          <circle cx="70" cy="25" r="9" fill="var(--accent)"/>
+        </svg>
+      </div>
       <div>
         <h1>Ruta de Pasos</h1>
         <div class="ver">v0.1 &middot; Colmenar Viejo</div>
@@ -174,7 +210,7 @@
   </header>
 
   <main>
-    <div id="map"></div>
+    <div class="map-wrap"><div id="map"></div></div>
 
     <div class="panel">
       <div class="row">
@@ -216,14 +252,17 @@
 
       <div class="stats" id="stats" hidden>
         <div class="stat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 18 Q4 10 12 10 Q20 10 20 4"/></svg>
           <div class="v" id="statKm">–</div>
           <div class="l">km reales</div>
         </div>
         <div class="stat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 9c1 0 1.5-1 1.5-2S10 5 9 5s-1.5 1-1.5 2 .5 2 1.5 2zm6 7c1 0 1.5-1 1.5-2s-.5-2-1.5-2-1.5 1-1.5 2 .5 2 1.5 2zM7 20l1-5-2-2 1-4M17 11l1 4-2 2 1 5"/></svg>
           <div class="v" id="statPasos">–</div>
           <div class="l">pasos est.</div>
         </div>
         <div class="stat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
           <div class="v" id="statTiempo">–</div>
           <div class="l">tiempo</div>
         </div>
@@ -266,9 +305,11 @@
   var VIEWBOX = { minLon:-4.60, minLat:39.90, maxLon:-3.00, maxLat:41.20 }; // Comunidad de Madrid, sesga sin excluir
 
   var map = L.map('map', { zoomControl:true }).setView(COLMENAR, 13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors'
+  var isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/' + (isDark ? 'dark_all' : 'voyager') + '/{z}/{x}/{y}{r}.png', {
+    maxZoom: 20,
+    subdomains: 'abcd',
+    attribution: '&copy; OpenStreetMap contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
   }).addTo(map);
 
   var markersLayer = L.layerGroup().addTo(map);
