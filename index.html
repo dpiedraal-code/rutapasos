@@ -128,6 +128,16 @@
     background:var(--surface-2);border:1px solid var(--border);color:var(--muted);
     border-radius:10px;padding:10px 12px;font-size:13px;cursor:pointer;white-space:nowrap;
   }
+  .ac-wrap{position:relative;}
+  .ac-list{
+    position:absolute;left:0;right:0;top:calc(100% + 4px);
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    max-height:220px;overflow-y:auto;z-index:30;
+    box-shadow:0 10px 24px rgba(0,0,0,.2);
+  }
+  .ac-item{padding:10px 12px;font-size:13.5px;border-bottom:1px solid var(--border);cursor:pointer;line-height:1.4;}
+  .ac-item:last-child{border-bottom:none;}
+  .ac-item:active{background:var(--surface-2);}
   .sync{display:flex;gap:10px;align-items:flex-end;}
   .sync .field{flex:1;}
   .sync .eq{color:var(--muted);padding-bottom:10px;font-size:13px;}
@@ -227,7 +237,10 @@
 
       <div class="field">
         <label for="destino">Destino</label>
-        <input type="text" id="destino" placeholder="¿A dónde vas?">
+        <div class="ac-wrap">
+          <input type="text" id="destino" placeholder="¿A dónde vas?" autocomplete="off">
+          <div class="ac-list" id="destinoSugerencias" hidden></div>
+        </div>
       </div>
 
       <div class="sync">
@@ -355,6 +368,7 @@
     statPasos: document.getElementById('statPasos'),
     statTiempo: document.getElementById('statTiempo'),
     diff: document.getElementById('diff'),
+    destinoSugerencias: document.getElementById('destinoSugerencias'),
     gmapsBtn: document.getElementById('gmapsBtn'),
     useLocBtn: document.getElementById('useLocBtn'),
     settingsBtn: document.getElementById('settingsBtn'),
@@ -430,15 +444,26 @@
   }
 
   // ---- Geocoding (Nominatim) ----
-  function geocode(query){
+  // Con biasCenter, restringe la búsqueda a ~9km alrededor de ese punto (mismo pueblo/zona)
+  function viewboxPara(biasCenter){
+    if (!biasCenter) return { vb: VIEWBOX, bounded: 0 };
+    var d = 0.09; // ~9-10 km
+    return {
+      vb: { minLon: biasCenter.lon-d, minLat: biasCenter.lat-d, maxLon: biasCenter.lon+d, maxLat: biasCenter.lat+d },
+      bounded: 1
+    };
+  }
+
+  function geocode(query, biasCenter){
     // Si ya viene como "lat,lon", úsalo directo
     var m = query.trim().match(/^(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)$/);
     if (m){
       return Promise.resolve({ lat: parseFloat(m[1]), lon: parseFloat(m[3]), label: query });
     }
+    var vb = viewboxPara(biasCenter);
     var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&viewbox='
-      + VIEWBOX.minLon + ',' + VIEWBOX.maxLat + ',' + VIEWBOX.maxLon + ',' + VIEWBOX.minLat
-      + '&bounded=0&q=' + encodeURIComponent(query);
+      + vb.vb.minLon + ',' + vb.vb.maxLat + ',' + vb.vb.maxLon + ',' + vb.vb.minLat
+      + '&bounded=' + vb.bounded + '&q=' + encodeURIComponent(query);
     return fetch(url, { headers: { 'Accept':'application/json' } })
       .then(function(r){
         if (!r.ok) throw new Error('Error buscando "' + query + '"');
@@ -449,6 +474,66 @@
         return { lat: parseFloat(list[0].lat), lon: parseFloat(list[0].lon), label: list[0].display_name };
       });
   }
+
+  function buscarSugerencias(query, biasCenter){
+    var vb = viewboxPara(biasCenter);
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=5&viewbox='
+      + vb.vb.minLon + ',' + vb.vb.maxLat + ',' + vb.vb.maxLon + ',' + vb.vb.minLat
+      + '&bounded=' + vb.bounded + '&q=' + encodeURIComponent(query);
+    return fetch(url, { headers: { 'Accept':'application/json' } })
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .catch(function(){ return []; });
+  }
+
+  function debounce(fn, wait){
+    var t;
+    return function(){
+      var args = arguments, ctx = this;
+      clearTimeout(t);
+      t = setTimeout(function(){ fn.apply(ctx, args); }, wait);
+    };
+  }
+
+  var lastOriginGeo = null;
+  function geocodeOrigenSilencioso(){
+    var txt = els.origen.value.trim();
+    if (!txt){ lastOriginGeo = null; return Promise.resolve(null); }
+    return geocode(txt).then(function(g){ lastOriginGeo = g; return g; }).catch(function(){ lastOriginGeo = null; return null; });
+  }
+  els.origen.addEventListener('blur', geocodeOrigenSilencioso);
+
+  function renderSugerencias(list){
+    els.destinoSugerencias.innerHTML = '';
+    if (!list.length){ els.destinoSugerencias.hidden = true; return; }
+    list.forEach(function(item){
+      var div = document.createElement('div');
+      div.className = 'ac-item';
+      div.textContent = item.display_name;
+      div.addEventListener('mousedown', function(e){
+        e.preventDefault();
+        els.destino.value = item.display_name;
+        els.destinoSugerencias.hidden = true;
+      });
+      els.destinoSugerencias.appendChild(div);
+    });
+    els.destinoSugerencias.hidden = false;
+  }
+
+  var mostrarSugerenciasDestino = debounce(function(){
+    var q = els.destino.value.trim();
+    if (q.length < 3){ els.destinoSugerencias.hidden = true; return; }
+    if (lastOriginGeo){
+      buscarSugerencias(q, lastOriginGeo).then(renderSugerencias);
+    } else {
+      geocodeOrigenSilencioso().then(function(bias){
+        buscarSugerencias(q, bias).then(renderSugerencias);
+      });
+    }
+  }, 400);
+  els.destino.addEventListener('input', mostrarSugerenciasDestino);
+  els.destino.addEventListener('blur', function(){
+    setTimeout(function(){ els.destinoSugerencias.hidden = true; }, 150);
+  });
 
   // ---- Routing (OpenRouteService) ----
   function route(coordsLonLat){
@@ -591,10 +676,13 @@
     var targetM = (pasosObjetivo / stepsPerKm()) * 1000;
     var originGeo, destGeo;
 
-    Promise.all([geocode(origenTxt), geocode(destinoTxt)])
-      .then(function(res){
-        originGeo = res[0];
-        destGeo = res[1];
+    geocode(origenTxt)
+      .then(function(og){
+        originGeo = og;
+        return geocode(destinoTxt, originGeo);
+      })
+      .then(function(dg){
+        destGeo = dg;
         dibujarMarcadores(originGeo, destGeo);
         setStatus('Calculando ruta directa...', false);
         return route([[originGeo.lon, originGeo.lat], [destGeo.lon, destGeo.lat]]);
