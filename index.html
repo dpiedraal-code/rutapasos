@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ruta de Pasos</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1d16;
+    --surface:#16271d;
+    --surface-2:#1d3326;
+    --fg:#eef3ec;
+    --muted:#9db3a6;
+    --accent:#e8a94a;
+    --accent-2:#5fae6e;
+    --danger:#e07a5f;
+    --border:#2a4433;
+    font-size:16px;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f3f1ea;
+      --surface:#ffffff;
+      --surface-2:#eef0e6;
+      --fg:#17241b;
+      --muted:#5b6b5e;
+      --accent:#b4711f;
+      --accent-2:#2f7a42;
+      --border:#d9dccf;
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+    background:var(--bg);
+    color:var(--fg);
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{
+    font-family:'Space Grotesk',sans-serif;
+    margin:0;
+  }
+  .app{
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+  }
+  header{
+    padding:16px max(16px, env(safe-area-inset-left,0px)) 14px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    border-bottom:1px solid var(--border);
+    background:var(--surface);
+  }
+  header .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  header .brand .dot{
+    width:10px;height:10px;border-radius:50%;
+    background:var(--accent);
+  }
+  header h1{font-size:17px;letter-spacing:.2px;}
+  header .ver{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+  .gear{
+    background:none;border:1px solid var(--border);color:var(--fg);
+    width:36px;height:36px;border-radius:10px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;font-size:16px;
+  }
+  main{
+    flex:1;display:flex;flex-direction:column;
+  }
+  #map{
+    width:100%;
+    height:min(52vh, 420px);
+    background:var(--surface-2);
+  }
+  .panel{
+    padding:16px max(16px, env(safe-area-inset-left,0px)) 24px;
+    display:flex;flex-direction:column;gap:14px;
+    background:var(--surface);
+  }
+  .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .field{flex:1;min-width:140px;display:flex;flex-direction:column;gap:6px;}
+  label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+  input[type=text], input[type=number], select{
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    color:var(--fg);
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:15px;
+    font-family:inherit;
+    width:100%;
+  }
+  input:focus, select:focus{outline:2px solid var(--accent-2); outline-offset:1px;}
+  .loc-btn{
+    display:flex;gap:6px;align-items:center;
+    background:var(--surface-2);border:1px solid var(--border);color:var(--muted);
+    border-radius:10px;padding:10px 12px;font-size:13px;cursor:pointer;white-space:nowrap;
+  }
+  .sync{display:flex;gap:10px;align-items:flex-end;}
+  .sync .field{flex:1;}
+  .sync .eq{color:var(--muted);padding-bottom:10px;font-size:13px;}
+  .main-btn{
+    background:var(--accent-2);
+    color:#fff;
+    border:none;
+    border-radius:12px;
+    padding:14px;
+    font-size:15px;
+    font-weight:600;
+    font-family:'Space Grotesk',sans-serif;
+    cursor:pointer;
+    letter-spacing:.02em;
+  }
+  .main-btn:disabled{opacity:.6;}
+  .status{
+    font-size:13px;color:var(--muted);min-height:18px;
+  }
+  .status.err{color:var(--danger);}
+  .stats{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+  }
+  .stat{
+    background:var(--surface-2);border:1px solid var(--border);border-radius:12px;
+    padding:12px;text-align:center;
+  }
+  .stat .v{
+    font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;
+    font-variant-numeric:tabular-nums;
+  }
+  .stat .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+  .stat.hit .v{color:var(--accent-2);}
+  .diff{font-size:12px;color:var(--muted);text-align:center;}
+  .sheet{
+    position:fixed;inset:0;background:rgba(0,0,0,.5);
+    display:none;align-items:flex-end;justify-content:center;z-index:50;
+  }
+  .sheet.open{display:flex;}
+  .sheet .card{
+    background:var(--surface);border-top-left-radius:18px;border-top-right-radius:18px;
+    padding:20px max(20px, env(safe-area-inset-left,0px)) max(24px, env(safe-area-inset-bottom,0px));
+    width:100%;max-width:480px;border:1px solid var(--border);border-bottom:none;
+  }
+  .sheet h2{font-size:16px;margin-bottom:4px;}
+  .sheet p{font-size:13px;color:var(--muted);line-height:1.5;margin:8px 0 14px;}
+  .sheet a{color:var(--accent);}
+  .sheet .close{
+    margin-top:14px;width:100%;background:var(--surface-2);color:var(--fg);
+    border:1px solid var(--border);border-radius:10px;padding:10px;font-size:14px;cursor:pointer;
+  }
+  .leaflet-container{font-family:inherit;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="dot"></div>
+      <div>
+        <h1>Ruta de Pasos</h1>
+        <div class="ver">v0.1 &middot; Colmenar Viejo</div>
+      </div>
+    </div>
+    <button class="gear" id="settingsBtn" title="Ajustes">&#9881;</button>
+  </header>
+
+  <main>
+    <div id="map"></div>
+
+    <div class="panel">
+      <div class="row">
+        <div class="field">
+          <label for="origen">Origen</label>
+          <input type="text" id="origen" placeholder="Ej. Plaza del Ayuntamiento, Colmenar Viejo">
+        </div>
+        <button class="loc-btn" id="useLocBtn">&#128205; Mi ubicación</button>
+      </div>
+
+      <div class="field">
+        <label for="destino">Destino</label>
+        <input type="text" id="destino" placeholder="¿A dónde vas?">
+      </div>
+
+      <div class="sync">
+        <div class="field">
+          <label for="pasos">Pasos deseados</label>
+          <input type="number" id="pasos" value="7000" step="100" min="0">
+        </div>
+        <div class="eq">&#8644;</div>
+        <div class="field">
+          <label for="km">Distancia (km)</label>
+          <input type="number" id="km" value="5.2" step="0.1" min="0">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="zancada">Longitud de zancada</label>
+        <select id="zancada">
+          <option value="1450">Corta (~1450 pasos/km)</option>
+          <option value="1350" selected>Media (~1350 pasos/km)</option>
+          <option value="1250">Larga (~1250 pasos/km)</option>
+        </select>
+      </div>
+
+      <button class="main-btn" id="calcBtn">Calcular ruta</button>
+      <div class="status" id="status">Introduce origen, destino y pasos, y pulsa Calcular.</div>
+
+      <div class="stats" id="stats" hidden>
+        <div class="stat">
+          <div class="v" id="statKm">–</div>
+          <div class="l">km reales</div>
+        </div>
+        <div class="stat">
+          <div class="v" id="statPasos">–</div>
+          <div class="l">pasos est.</div>
+        </div>
+        <div class="stat">
+          <div class="v" id="statTiempo">–</div>
+          <div class="l">tiempo</div>
+        </div>
+      </div>
+      <div class="diff" id="diff"></div>
+      <a class="main-btn" id="gmapsBtn" href="#" target="_blank" rel="noopener"
+         style="display:none; text-align:center; text-decoration:none; background:var(--accent);">
+        Abrir en Google Maps
+      </a>
+    </div>
+  </main>
+</div>
+
+<div class="sheet" id="settingsSheet">
+  <div class="card">
+    <h2>Clave de OpenRouteService</h2>
+    <p>
+      Esta app calcula rutas reales a pie usando <strong>OpenRouteService</strong>, un servicio gratuito.
+      Necesitas tu propia clave (gratis, sin tarjeta): entra en
+      <a href="https://openrouteservice.org/dev/#/signup" target="_blank" rel="noopener">openrouteservice.org/dev</a>,
+      crea una cuenta y copia tu "API key" aquí abajo.
+      <br><br>
+      Tu clave se guarda <strong>solo en este dispositivo</strong> (no se envía a ningún sitio excepto OpenRouteService).
+    </p>
+    <div class="field">
+      <label for="apiKeyInput">API key</label>
+      <input type="text" id="apiKeyInput" placeholder="Pega aquí tu clave">
+    </div>
+    <button class="main-btn" id="saveKeyBtn" style="margin-top:12px;">Guardar</button>
+    <button class="close" id="closeSettingsBtn">Cerrar</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var COLMENAR = [40.6578, -3.7658];
+  var VIEWBOX = { minLon:-4.60, minLat:39.90, maxLon:-3.00, maxLat:41.20 }; // Comunidad de Madrid, sesga sin excluir
+
+  var map = L.map('map', { zoomControl:true }).setView(COLMENAR, 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  var markersLayer = L.layerGroup().addTo(map);
+  var routeLayer = L.layerGroup().addTo(map);
+
+  var els = {
+    origen: document.getElementById('origen'),
+    destino: document.getElementById('destino'),
+    pasos: document.getElementById('pasos'),
+    km: document.getElementById('km'),
+    zancada: document.getElementById('zancada'),
+    calcBtn: document.getElementById('calcBtn'),
+    status: document.getElementById('status'),
+    stats: document.getElementById('stats'),
+    statKm: document.getElementById('statKm'),
+    statPasos: document.getElementById('statPasos'),
+    statTiempo: document.getElementById('statTiempo'),
+    diff: document.getElementById('diff'),
+    gmapsBtn: document.getElementById('gmapsBtn'),
+    useLocBtn: document.getElementById('useLocBtn'),
+    settingsBtn: document.getElementById('settingsBtn'),
+    settingsSheet: document.getElementById('settingsSheet'),
+    closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+    apiKeyInput: document.getElementById('apiKeyInput'),
+    saveKeyBtn: document.getElementById('saveKeyBtn')
+  };
+
+  function stepsPerKm(){ return parseFloat(els.zancada.value) || 1350; }
+
+  var syncing = false;
+  els.pasos.addEventListener('input', function(){
+    if (syncing) return;
+    syncing = true;
+    var p = parseFloat(els.pasos.value) || 0;
+    els.km.value = (p / stepsPerKm()).toFixed(2);
+    syncing = false;
+  });
+  els.km.addEventListener('input', function(){
+    if (syncing) return;
+    syncing = true;
+    var k = parseFloat(els.km.value) || 0;
+    els.pasos.value = Math.round(k * stepsPerKm());
+    syncing = false;
+  });
+  els.zancada.addEventListener('change', function(){
+    syncing = true;
+    var p = parseFloat(els.pasos.value) || 0;
+    els.km.value = (p / stepsPerKm()).toFixed(2);
+    syncing = false;
+  });
+
+  // ---- API key (localStorage) ----
+  function getApiKey(){
+    try { return localStorage.getItem('ors_api_key') || ''; }
+    catch(e){ return ''; }
+  }
+  function setApiKey(k){
+    try { localStorage.setItem('ors_api_key', k); } catch(e){}
+  }
+  els.settingsBtn.addEventListener('click', function(){
+    els.apiKeyInput.value = getApiKey();
+    els.settingsSheet.classList.add('open');
+  });
+  els.closeSettingsBtn.addEventListener('click', function(){
+    els.settingsSheet.classList.remove('open');
+  });
+  els.saveKeyBtn.addEventListener('click', function(){
+    setApiKey(els.apiKeyInput.value.trim());
+    els.settingsSheet.classList.remove('open');
+    setStatus('Clave guardada en este dispositivo.', false);
+  });
+
+  // ---- Geolocation ----
+  els.useLocBtn.addEventListener('click', function(){
+    if (!navigator.geolocation){
+      setStatus('Tu navegador no soporta geolocalización.', true);
+      return;
+    }
+    setStatus('Buscando tu ubicación...', false);
+    navigator.geolocation.getCurrentPosition(function(pos){
+      els.origen.value = pos.coords.latitude.toFixed(6) + ',' + pos.coords.longitude.toFixed(6);
+      setStatus('Ubicación detectada.', false);
+    }, function(err){
+      setStatus('No se pudo obtener tu ubicación (' + err.message + ').', true);
+    }, { enableHighAccuracy:true, timeout:10000 });
+  });
+
+  function setStatus(msg, isErr){
+    els.status.textContent = msg;
+    els.status.classList.toggle('err', !!isErr);
+  }
+
+  // ---- Geocoding (Nominatim) ----
+  function geocode(query){
+    // Si ya viene como "lat,lon", úsalo directo
+    var m = query.trim().match(/^(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)$/);
+    if (m){
+      return Promise.resolve({ lat: parseFloat(m[1]), lon: parseFloat(m[3]), label: query });
+    }
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&viewbox='
+      + VIEWBOX.minLon + ',' + VIEWBOX.maxLat + ',' + VIEWBOX.maxLon + ',' + VIEWBOX.minLat
+      + '&bounded=0&q=' + encodeURIComponent(query);
+    return fetch(url, { headers: { 'Accept':'application/json' } })
+      .then(function(r){
+        if (!r.ok) throw new Error('Error buscando "' + query + '"');
+        return r.json();
+      })
+      .then(function(list){
+        if (!list.length) throw new Error('No se encontró "' + query + '"');
+        return { lat: parseFloat(list[0].lat), lon: parseFloat(list[0].lon), label: list[0].display_name };
+      });
+  }
+
+  // ---- Routing (OpenRouteService) ----
+  function route(coordsLonLat){
+    var key = getApiKey();
+    if (!key){
+      var err = new Error('Falta la clave de OpenRouteService. Pulsa el engranaje de arriba para añadirla.');
+      err.code = 'NO_KEY';
+      return Promise.reject(err);
+    }
+    return fetch('https://api.openrouteservice.org/v2/directions/foot-walking/geojson', {
+      method: 'POST',
+      headers: {
+        'Authorization': key,
+        'Content-Type': 'application/json',
+        'Accept': 'application/geo+json'
+      },
+      body: JSON.stringify({ coordinates: coordsLonLat })
+    }).then(function(r){
+      if (!r.ok){
+        return r.json().catch(function(){ return null; }).then(function(body){
+          var msg = (body && body.error && body.error.message) ? body.error.message : ('Error de ruta (' + r.status + ')');
+          throw new Error(msg);
+        });
+      }
+      return r.json();
+    }).then(function(geo){
+      var f = geo.features[0];
+      return {
+        distance: f.properties.summary.distance, // metros
+        duration: f.properties.summary.duration, // segundos
+        coords: f.geometry.coordinates // [lon, lat]
+      };
+    });
+  }
+
+  function metersToLatLon(latBase){
+    var mPerDegLat = 111320;
+    var mPerDegLon = 111320 * Math.cos(latBase * Math.PI / 180);
+    return { mPerDegLat: mPerDegLat, mPerDegLon: mPerDegLon };
+  }
+
+  // Busca un punto de paso que haga que origen->waypoint->destino sume ~targetM
+  function buscarRutaConRodeo(origin, dest, targetM, directRoute){
+    var midLat = (origin.lat + dest.lat) / 2;
+    var midLon = (origin.lon + dest.lon) / 2;
+    var conv = metersToLatLon(midLat);
+
+    var dLat = (dest.lat - origin.lat);
+    var dLon = (dest.lon - origin.lon);
+    // vector perpendicular en espacio "metros"
+    var vLatM = dLat * conv.mPerDegLat;
+    var vLonM = dLon * conv.mPerDegLon;
+    var len = Math.sqrt(vLatM*vLatM + vLonM*vLonM) || 1;
+    var perpLatM = -vLonM / len;
+    var perpLonM = vLatM / len;
+
+    var extraNeeded = Math.max(targetM - directRoute.distance, 50);
+    var offset = extraNeeded / 2; // estimación inicial en metros
+
+    var mejor = null;
+    var mejorDiff = Infinity;
+
+    return intentar(0);
+
+    function intentar(i){
+      if (i >= 5){
+        return mejor ? Promise.resolve(mejor) : Promise.resolve(directRoute);
+      }
+      var wLat = midLat + (perpLatM * offset) / conv.mPerDegLat;
+      var wLon = midLon + (perpLonM * offset) / conv.mPerDegLon;
+      var coords = [[origin.lon, origin.lat], [wLon, wLat], [dest.lon, dest.lat]];
+      return route(coords).then(function(r){
+        r.waypoint = { lat: wLat, lon: wLon };
+        var diff = Math.abs(r.distance - targetM);
+        if (diff < mejorDiff){
+          mejorDiff = diff;
+          mejor = r;
+        }
+        if (diff <= targetM * 0.06){
+          return r; // suficientemente cerca
+        }
+        var ratio = targetM / r.distance;
+        offset = offset * Math.max(0.5, Math.min(2.2, ratio));
+        return intentar(i+1);
+      });
+    }
+  }
+
+  function fmtTiempo(seg){
+    var min = Math.round(seg / 60);
+    if (min < 60) return min + ' min';
+    var h = Math.floor(min/60), m = min%60;
+    return h + 'h ' + (m ? m+'min' : '');
+  }
+
+  function dibujarRuta(coordsLonLat){
+    routeLayer.clearLayers();
+    var latlngs = coordsLonLat.map(function(c){ return [c[1], c[0]]; });
+    var poly = L.polyline(latlngs, { color: getComputedStyle(document.documentElement).getPropertyValue('--accent-2') || '#2f7a42', weight: 5, opacity: 0.9 }).addTo(routeLayer);
+    map.fitBounds(poly.getBounds(), { padding:[30,30] });
+  }
+
+  function construirEnlaceGoogleMaps(origin, dest, waypoint){
+    var base = 'https://www.google.com/maps/dir/?api=1';
+    var params = '&origin=' + origin.lat + ',' + origin.lon
+      + '&destination=' + dest.lat + ',' + dest.lon
+      + '&travelmode=walking';
+    if (waypoint){
+      params += '&waypoints=' + waypoint.lat + ',' + waypoint.lon;
+    }
+    return base + params;
+  }
+
+  function dibujarMarcadores(origin, dest){
+    markersLayer.clearLayers();
+    L.circleMarker([origin.lat, origin.lon], { radius:7, color:'#5fae6e', fillColor:'#5fae6e', fillOpacity:1 }).addTo(markersLayer).bindTooltip('Origen');
+    L.circleMarker([dest.lat, dest.lon], { radius:7, color:'#e8a94a', fillColor:'#e8a94a', fillOpacity:1 }).addTo(markersLayer).bindTooltip('Destino');
+  }
+
+  els.calcBtn.addEventListener('click', function(){
+    var origenTxt = els.origen.value.trim();
+    var destinoTxt = els.destino.value.trim();
+    var pasosObjetivo = parseFloat(els.pasos.value) || 0;
+
+    if (!origenTxt || !destinoTxt){
+      setStatus('Rellena origen y destino.', true);
+      return;
+    }
+    if (!getApiKey()){
+      setStatus('Falta la clave de OpenRouteService. Pulsa el engranaje de arriba.', true);
+      els.settingsSheet.classList.add('open');
+      return;
+    }
+
+    els.calcBtn.disabled = true;
+    els.stats.hidden = true;
+    els.gmapsBtn.style.display = 'none';
+    setStatus('Buscando direcciones...', false);
+
+    var targetM = (pasosObjetivo / stepsPerKm()) * 1000;
+    var originGeo, destGeo;
+
+    Promise.all([geocode(origenTxt), geocode(destinoTxt)])
+      .then(function(res){
+        originGeo = res[0];
+        destGeo = res[1];
+        dibujarMarcadores(originGeo, destGeo);
+        setStatus('Calculando ruta directa...', false);
+        return route([[originGeo.lon, originGeo.lat], [destGeo.lon, destGeo.lat]]);
+      })
+      .then(function(directRoute){
+        if (directRoute.distance >= targetM * 0.93){
+          return directRoute;
+        }
+        setStatus('La ruta directa se queda corta, buscando un rodeo...', false);
+        return buscarRutaConRodeo(originGeo, destGeo, targetM, directRoute);
+      })
+      .then(function(finalRoute){
+        dibujarRuta(finalRoute.coords);
+        var kmReal = finalRoute.distance / 1000;
+        var pasosReal = Math.round(finalRoute.distance / 1000 * stepsPerKm());
+        els.statKm.textContent = kmReal.toFixed(2);
+        els.statPasos.textContent = pasosReal.toLocaleString('es-ES');
+        els.statTiempo.textContent = fmtTiempo(finalRoute.duration);
+        els.stats.hidden = false;
+
+        var diffPasos = pasosReal - pasosObjetivo;
+        var diffTxt = diffPasos === 0 ? 'Justo en el objetivo.' :
+          (diffPasos > 0 ? '+' + diffPasos.toLocaleString('es-ES') + ' pasos sobre tu objetivo.' :
+           diffPasos.toLocaleString('es-ES') + ' pasos por debajo de tu objetivo.');
+        els.diff.textContent = diffTxt;
+        setStatus('Ruta calculada.', false);
+
+        els.gmapsBtn.href = construirEnlaceGoogleMaps(originGeo, destGeo, finalRoute.waypoint || null);
+        els.gmapsBtn.style.display = 'block';
+      })
+      .catch(function(err){
+        setStatus(err.message || 'Algo ha fallado calculando la ruta.', true);
+      })
+      .finally(function(){
+        els.calcBtn.disabled = false;
+      });
+  });
+
+})();
+</script>
+</body>
+</html>
