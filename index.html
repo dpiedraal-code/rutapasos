@@ -108,6 +108,24 @@
     background:var(--surface);
     box-shadow:0 -8px 24px rgba(0,0,0,.12);
   }
+  .mode-toggle{display:flex;gap:6px;background:var(--surface-2);padding:4px;border-radius:12px;border:1px solid var(--border);}
+  .mode-btn{
+    flex:1;background:none;border:none;color:var(--muted);
+    font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;
+    padding:9px 6px;border-radius:9px;cursor:pointer;
+    transition:background .15s ease, color .15s ease;
+  }
+  .mode-btn.active{background:var(--surface);color:var(--fg);box-shadow:0 2px 6px rgba(0,0,0,.1);}
+  .route-options{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 4px;}
+  .opt-chip{
+    flex:0 0 auto;display:flex;flex-direction:column;gap:3px;
+    background:var(--surface-2);border:1.5px solid var(--border);border-radius:12px;
+    padding:10px 14px;cursor:pointer;text-align:left;font-family:inherit;color:var(--fg);
+    min-width:112px;
+  }
+  .opt-chip .opt-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .opt-chip .opt-km{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;}
+  .opt-chip.active{border-color:var(--accent-2);box-shadow:0 0 0 2px rgba(95,174,110,.25) inset;}
   .row{display:flex;gap:10px;flex-wrap:wrap;}
   .field{flex:1;min-width:140px;display:flex;flex-direction:column;gap:6px;}
   label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
@@ -225,15 +243,20 @@
     <div class="map-wrap"><div id="map"></div></div>
 
     <div class="panel">
+      <div class="mode-toggle" id="modeToggle">
+        <button class="mode-btn active" data-mode="ab" type="button">Origen &rarr; Destino</button>
+        <button class="mode-btn" data-mode="loop" type="button">Ida y vuelta</button>
+      </div>
+
       <div class="row">
         <div class="field">
-          <label for="origen">Origen</label>
+          <label for="origen" id="origenLabel">Origen</label>
           <input type="text" id="origen" placeholder="Ej. Plaza del Ayuntamiento, Colmenar Viejo">
         </div>
         <button class="loc-btn" id="useLocBtn">&#128205; Mi ubicación</button>
       </div>
 
-      <div class="field">
+      <div class="field" id="destinoField">
         <label for="destino">Destino</label>
         <div class="ac-wrap">
           <input type="text" id="destino" placeholder="¿A dónde vas?" autocomplete="off">
@@ -264,6 +287,8 @@
 
       <button class="main-btn" id="calcBtn">Calcular ruta</button>
       <div class="status" id="status">Introduce origen, destino y pasos, y pulsa Calcular.</div>
+
+      <div class="route-options" id="routeOptions" hidden></div>
 
       <div class="stats" id="stats" hidden>
         <div class="stat">
@@ -367,6 +392,9 @@
     statTiempo: document.getElementById('statTiempo'),
     diff: document.getElementById('diff'),
     destinoSugerencias: document.getElementById('destinoSugerencias'),
+    destinoField: document.getElementById('destinoField'),
+    origenLabel: document.getElementById('origenLabel'),
+    routeOptions: document.getElementById('routeOptions'),
     gmapsBtn: document.getElementById('gmapsBtn'),
     useLocBtn: document.getElementById('useLocBtn'),
     settingsBtn: document.getElementById('settingsBtn'),
@@ -377,6 +405,24 @@
   };
 
   function stepsPerKm(){ return parseFloat(els.zancada.value) || 1350; }
+
+  // ---- Modo: Origen->Destino vs Ida y vuelta ----
+  var modo = 'ab';
+  var modeButtons = document.querySelectorAll('.mode-btn');
+  modeButtons.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      modo = btn.getAttribute('data-mode');
+      modeButtons.forEach(function(b){ b.classList.toggle('active', b === btn); });
+      els.destinoField.hidden = (modo === 'loop');
+      els.origenLabel.textContent = modo === 'loop' ? 'Punto de salida' : 'Origen';
+      els.stats.hidden = true;
+      els.gmapsBtn.style.display = 'none';
+      els.routeOptions.hidden = true;
+      setStatus(modo === 'loop'
+        ? 'Introduce el punto de salida y los pasos, y pulsa Calcular.'
+        : 'Introduce origen, destino y pasos, y pulsa Calcular.', false);
+    });
+  });
 
   var syncing = false;
   els.pasos.addEventListener('input', function(){
@@ -573,8 +619,10 @@
     return { mPerDegLat: mPerDegLat, mPerDegLon: mPerDegLon };
   }
 
-  // Busca un punto de paso que haga que origen->waypoint->destino sume ~targetM
-  function buscarRutaConRodeo(origin, dest, targetM, directRoute){
+  // Busca un punto de paso que haga que origen->waypoint->destino sume ~targetM.
+  // lado = 1 o -1, para rodear por un sentido u otro de la línea recta.
+  function buscarRutaConRodeo(origin, dest, targetM, directRoute, lado){
+    lado = lado || 1;
     var midLat = (origin.lat + dest.lat) / 2;
     var midLon = (origin.lon + dest.lon) / 2;
     var conv = metersToLatLon(midLat);
@@ -600,8 +648,8 @@
       if (i >= 5){
         return mejor ? Promise.resolve(mejor) : Promise.resolve(directRoute);
       }
-      var wLat = midLat + (perpLatM * offset) / conv.mPerDegLat;
-      var wLon = midLon + (perpLonM * offset) / conv.mPerDegLon;
+      var wLat = midLat + (perpLatM * offset * lado) / conv.mPerDegLat;
+      var wLon = midLon + (perpLonM * offset * lado) / conv.mPerDegLon;
       var coords = [[origin.lon, origin.lat], [wLon, wLat], [dest.lon, dest.lat]];
       return route(coords).then(function(r){
         r.waypoint = { lat: wLat, lon: wLon };
@@ -615,6 +663,43 @@
         }
         var ratio = targetM / r.distance;
         offset = offset * Math.max(0.5, Math.min(2.2, ratio));
+        return intentar(i+1);
+      });
+    }
+  }
+
+  // Genera una ruta circular (sale y vuelve al mismo punto) con 2 puntos de paso
+  // colocados a partir de un rumbo de partida (bearingDeg), buscando sumar ~targetM.
+  function generarLoop(origin, targetM, bearingDeg){
+    var conv = metersToLatLon(origin.lat);
+    var rad = bearingDeg * Math.PI / 180;
+    var ang2 = rad + 2.35; // separación para que el bucle tenga forma, no sea ida y vuelta por el mismo sitio
+    var d = Math.max(targetM / 3, 50);
+    var mejor = null, mejorDiff = Infinity;
+
+    function puntoEn(angulo, dist){
+      return {
+        lat: origin.lat + (Math.cos(angulo) * dist) / conv.mPerDegLat,
+        lon: origin.lon + (Math.sin(angulo) * dist) / conv.mPerDegLon
+      };
+    }
+
+    return intentar(0);
+
+    function intentar(i){
+      if (i >= 5){
+        return mejor ? Promise.resolve(mejor) : Promise.reject(new Error('No se pudo generar una ruta circular por ahí.'));
+      }
+      var p1 = puntoEn(rad, d);
+      var p2 = puntoEn(ang2, d);
+      var coords = [[origin.lon, origin.lat], [p1.lon, p1.lat], [p2.lon, p2.lat], [origin.lon, origin.lat]];
+      return route(coords).then(function(r){
+        r.waypoints = [p1, p2];
+        var diff = Math.abs(r.distance - targetM);
+        if (diff < mejorDiff){ mejorDiff = diff; mejor = r; }
+        if (diff <= targetM * 0.08){ return r; }
+        var ratio = targetM / r.distance;
+        d = d * Math.max(0.5, Math.min(2.0, ratio));
         return intentar(i+1);
       });
     }
@@ -634,30 +719,77 @@
     map.fitBounds(poly.getBounds(), { padding:[30,30] });
   }
 
-  function construirEnlaceGoogleMaps(origin, dest, waypoint){
+  function construirEnlaceGoogleMaps(origin, dest, waypoints){
     var base = 'https://www.google.com/maps/dir/?api=1';
     var params = '&origin=' + origin.lat + ',' + origin.lon
       + '&destination=' + dest.lat + ',' + dest.lon
       + '&travelmode=walking';
-    if (waypoint){
-      params += '&waypoints=' + waypoint.lat + ',' + waypoint.lon;
+    if (waypoints && waypoints.length){
+      params += '&waypoints=' + waypoints.map(function(w){ return w.lat + ',' + w.lon; }).join('|');
     }
     return base + params;
   }
 
-  function dibujarMarcadores(origin, dest){
+  function dibujarMarcadores(origin, dest, esBucle){
     markersLayer.clearLayers();
-    L.circleMarker([origin.lat, origin.lon], { radius:7, weight:3, color:'#fff', fillColor:'#1f2937', fillOpacity:1 }).addTo(markersLayer).bindTooltip('Origen');
-    L.circleMarker([dest.lat, dest.lon], { radius:7, weight:3, color:'#fff', fillColor:'#ef4444', fillOpacity:1 }).addTo(markersLayer).bindTooltip('Destino');
+    L.circleMarker([origin.lat, origin.lon], { radius:7, weight:3, color:'#fff', fillColor:'#1f2937', fillOpacity:1 }).addTo(markersLayer).bindTooltip(esBucle ? 'Salida y llegada' : 'Origen');
+    if (!esBucle){
+      L.circleMarker([dest.lat, dest.lon], { radius:7, weight:3, color:'#fff', fillColor:'#ef4444', fillOpacity:1 }).addTo(markersLayer).bindTooltip('Destino');
+    }
+  }
+
+  function renderOpciones(lista){
+    els.routeOptions.innerHTML = '';
+    if (lista.length <= 1){ els.routeOptions.hidden = true; return; }
+    lista.forEach(function(opt, idx){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'opt-chip';
+      var km = (opt.route.distance / 1000).toFixed(2);
+      btn.innerHTML = '<span class="opt-label">' + opt.label + '</span><span class="opt-km">' + km + ' km</span>';
+      btn.addEventListener('click', function(){ aplicarOpcion(idx); });
+      els.routeOptions.appendChild(btn);
+    });
+    els.routeOptions.hidden = false;
+  }
+
+  var candidatos = [];
+  var origenActual = null, destActual = null;
+
+  function aplicarOpcion(i){
+    var chips = els.routeOptions.querySelectorAll('.opt-chip');
+    chips.forEach(function(c, idx){ c.classList.toggle('active', idx === i); });
+
+    var opt = candidatos[i];
+    if (!opt) return;
+    dibujarRuta(opt.route.coords);
+
+    var kmReal = opt.route.distance / 1000;
+    var pasosReal = Math.round(kmReal * stepsPerKm());
+    var pasosObjetivo = parseFloat(els.pasos.value) || 0;
+
+    els.statKm.textContent = kmReal.toFixed(2);
+    els.statPasos.textContent = pasosReal.toLocaleString('es-ES');
+    els.statTiempo.textContent = fmtTiempo(opt.route.duration);
+    els.stats.hidden = false;
+
+    var diffPasos = pasosReal - pasosObjetivo;
+    els.diff.textContent = diffPasos === 0 ? 'Justo en el objetivo.' :
+      (diffPasos > 0 ? '+' + diffPasos.toLocaleString('es-ES') + ' pasos sobre tu objetivo.' :
+       diffPasos.toLocaleString('es-ES') + ' pasos por debajo de tu objetivo.');
+
+    var wps = opt.route.waypoints || (opt.route.waypoint ? [opt.route.waypoint] : []);
+    els.gmapsBtn.href = construirEnlaceGoogleMaps(origenActual, destActual, wps);
+    els.gmapsBtn.style.display = 'block';
   }
 
   els.calcBtn.addEventListener('click', function(){
     var origenTxt = els.origen.value.trim();
-    var destinoTxt = els.destino.value.trim();
+    var destinoTxt = modo === 'ab' ? els.destino.value.trim() : '';
     var pasosObjetivo = parseFloat(els.pasos.value) || 0;
 
-    if (!origenTxt || !destinoTxt){
-      setStatus('Rellena origen y destino.', true);
+    if (!origenTxt || (modo === 'ab' && !destinoTxt)){
+      setStatus(modo === 'ab' ? 'Rellena origen y destino.' : 'Rellena el punto de salida.', true);
       return;
     }
     if (!getApiKey()){
@@ -669,47 +801,55 @@
     els.calcBtn.disabled = true;
     els.stats.hidden = true;
     els.gmapsBtn.style.display = 'none';
+    els.routeOptions.hidden = true;
     setStatus('Buscando direcciones...', false);
 
     var targetM = (pasosObjetivo / stepsPerKm()) * 1000;
-    var originGeo, destGeo;
 
     geocode(origenTxt)
       .then(function(og){
-        originGeo = og;
-        return geocode(destinoTxt, originGeo);
-      })
-      .then(function(dg){
-        destGeo = dg;
-        dibujarMarcadores(originGeo, destGeo);
-        setStatus('Calculando ruta directa...', false);
-        return route([[originGeo.lon, originGeo.lat], [destGeo.lon, destGeo.lat]]);
-      })
-      .then(function(directRoute){
-        if (directRoute.distance >= targetM * 0.93){
-          return directRoute;
+        origenActual = og;
+
+        if (modo === 'loop'){
+          destActual = og;
+          dibujarMarcadores(og, og, true);
+          setStatus('Generando rutas circulares...', false);
+          return Promise.all([
+            generarLoop(og, targetM, 10),
+            generarLoop(og, targetM, 130),
+            generarLoop(og, targetM, 250)
+          ]).then(function(rs){
+            return rs.map(function(r, idx){ return { label: 'Opción ' + (idx + 1), route: r }; });
+          });
         }
-        setStatus('La ruta directa se queda corta, buscando un rodeo...', false);
-        return buscarRutaConRodeo(originGeo, destGeo, targetM, directRoute);
+
+        return geocode(destinoTxt, og).then(function(dg){
+          destActual = dg;
+          dibujarMarcadores(og, dg, false);
+          setStatus('Calculando ruta directa...', false);
+          return route([[og.lon, og.lat], [dg.lon, dg.lat]]).then(function(directRoute){
+            if (directRoute.distance >= targetM * 0.93){
+              return [{ label: 'Ruta directa', route: directRoute }];
+            }
+            setStatus('La ruta directa se queda corta, buscando rodeos...', false);
+            return Promise.all([
+              buscarRutaConRodeo(og, dg, targetM, directRoute, 1),
+              buscarRutaConRodeo(og, dg, targetM, directRoute, -1)
+            ]).then(function(rs){
+              return [
+                { label: 'Rodeo A', route: rs[0] },
+                { label: 'Rodeo B', route: rs[1] },
+                { label: 'Directa (corta)', route: directRoute }
+              ];
+            });
+          });
+        });
       })
-      .then(function(finalRoute){
-        dibujarRuta(finalRoute.coords);
-        var kmReal = finalRoute.distance / 1000;
-        var pasosReal = Math.round(finalRoute.distance / 1000 * stepsPerKm());
-        els.statKm.textContent = kmReal.toFixed(2);
-        els.statPasos.textContent = pasosReal.toLocaleString('es-ES');
-        els.statTiempo.textContent = fmtTiempo(finalRoute.duration);
-        els.stats.hidden = false;
-
-        var diffPasos = pasosReal - pasosObjetivo;
-        var diffTxt = diffPasos === 0 ? 'Justo en el objetivo.' :
-          (diffPasos > 0 ? '+' + diffPasos.toLocaleString('es-ES') + ' pasos sobre tu objetivo.' :
-           diffPasos.toLocaleString('es-ES') + ' pasos por debajo de tu objetivo.');
-        els.diff.textContent = diffTxt;
-        setStatus('Ruta calculada.', false);
-
-        els.gmapsBtn.href = construirEnlaceGoogleMaps(originGeo, destGeo, finalRoute.waypoint || null);
-        els.gmapsBtn.style.display = 'block';
+      .then(function(lista){
+        candidatos = lista;
+        renderOpciones(candidatos);
+        aplicarOpcion(0);
+        setStatus(candidatos.length > 1 ? 'Elige la opción que prefieras.' : 'Ruta calculada.', false);
       })
       .catch(function(err){
         setStatus(err.message || 'Algo ha fallado calculando la ruta.', true);
