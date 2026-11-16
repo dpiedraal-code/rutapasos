@@ -814,12 +814,16 @@
           destActual = og;
           dibujarMarcadores(og, og, true);
           setStatus('Generando rutas circulares...', false);
-          return Promise.all([
-            generarLoop(og, targetM, 10),
-            generarLoop(og, targetM, 130),
-            generarLoop(og, targetM, 250)
-          ]).then(function(rs){
-            return rs.map(function(r, idx){ return { label: 'Opción ' + (idx + 1), route: r }; });
+          var bearings = [10, 130, 250];
+          return Promise.all(bearings.map(function(b){
+            return generarLoop(og, targetM, b).catch(function(){ return null; });
+          })).then(function(rs){
+            var opciones = [];
+            rs.forEach(function(r, idx){
+              if (r) opciones.push({ label: 'Opción ' + (idx + 1), route: r });
+            });
+            if (!opciones.length) throw new Error('No se pudo generar ninguna ruta circular por aquí.');
+            return opciones;
           });
         }
 
@@ -828,19 +832,20 @@
           dibujarMarcadores(og, dg, false);
           setStatus('Calculando ruta directa...', false);
           return route([[og.lon, og.lat], [dg.lon, dg.lat]]).then(function(directRoute){
-            if (directRoute.distance >= targetM * 0.93){
-              return [{ label: 'Ruta directa', route: directRoute }];
-            }
-            setStatus('La ruta directa se queda corta, buscando rodeos...', false);
+            setStatus('Buscando variantes de la ruta...', false);
             return Promise.all([
-              buscarRutaConRodeo(og, dg, targetM, directRoute, 1),
-              buscarRutaConRodeo(og, dg, targetM, directRoute, -1)
+              buscarRutaConRodeo(og, dg, targetM, directRoute, 1).catch(function(){ return null; }),
+              buscarRutaConRodeo(og, dg, targetM, directRoute, -1).catch(function(){ return null; })
             ]).then(function(rs){
-              return [
-                { label: 'Rodeo A', route: rs[0] },
-                { label: 'Rodeo B', route: rs[1] },
-                { label: 'Directa (corta)', route: directRoute }
-              ];
+              var opciones = [];
+              if (rs[0]) opciones.push({ label: 'Rodeo A', route: rs[0] });
+              if (rs[1]) opciones.push({ label: 'Rodeo B', route: rs[1] });
+              if (directRoute.distance < targetM * 0.93){
+                opciones.push({ label: 'Directa (corta)', route: directRoute });
+              } else {
+                opciones.push({ label: 'Directa', route: directRoute });
+              }
+              return opciones;
             });
           });
         });
